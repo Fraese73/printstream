@@ -13,16 +13,31 @@ def test_build_command() -> None:
         octoprint_webcam_url="http://cam",
         youtube_rtmps_url="rtmps://example/live2",
         youtube_stream_key="test",
+        video_fps=5,
+        video_bitrate="1000k",
     )
     c = StreamManager(s).build_command()
     assert c[0] == "ffmpeg"
     assert "http://cam" in c
     assert "rtmps://example/live2/test" in c
+    assert "-use_wallclock_as_timestamps" in c
+    assert "-fps_mode" in c
+    assert "cfr" in c
+    assert any(part.startswith("fps=5,") for part in c)
+    assert "2000k" in c  # bufsize = 2x bitrate
+    assert c[c.index("-g") + 1] == "10"
 
 
 def test_requires_stream_key() -> None:
     with pytest.raises(ValueError):
         StreamManager(Settings(youtube_stream_key="")).build_command()
+
+
+def test_requires_webcam_url() -> None:
+    with pytest.raises(ValueError, match="Webcam"):
+        StreamManager(
+            Settings(youtube_stream_key="test", octoprint_webcam_url="")
+        ).build_command()
 
 
 @pytest.mark.asyncio

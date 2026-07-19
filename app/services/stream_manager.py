@@ -1,9 +1,27 @@
 import asyncio
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
+
 from app.config import Settings
 from app.core.models import StreamState
+
+
+def parse_bitrate_k(bitrate: str) -> int:
+    match = re.fullmatch(r"(\d+)([kKmM]?)", bitrate.strip())
+    if not match:
+        raise ValueError(f"Ungültige Bitrate: {bitrate}")
+    value = int(match.group(1))
+    unit = match.group(2).lower()
+    if unit == "m":
+        return value * 1000
+    return value
+
+
+def bufsize_from_bitrate(video_bitrate: str) -> str:
+    return f"{parse_bitrate_k(video_bitrate) * 2}k"
+
 
 @dataclass
 class StreamStatus:
@@ -11,8 +29,10 @@ class StreamStatus:
     pid: Optional[int] = None
     return_code: Optional[int] = None
     last_error: Optional[str] = None
+
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
+
 
 class StreamManager:
     def __init__(self, settings: Settings) -> None:
@@ -26,17 +46,83 @@ class StreamManager:
     def build_command(self) -> list[str]:
         if not self.settings.youtube_stream_key:
             raise ValueError("Kein YouTube-Streamschlüssel konfiguriert.")
-        output_url = f"{self.settings.youtube_rtmps_url.rstrip('/')}/{self.settings.youtube_stream_key}"
+        if not self.settings.octoprint_webcam_url:
+            raise ValueError("Keine OctoPrint-Webcam-URL konfiguriert.")
+
+        fps = self.settings.video_fps
+        width = self.settings.video_width
+        height = self.settings.video_height
+        bitrate = self.settings.video_bitrate
+        gop = str(max(fps * 2, 2))
+        output_url = (
+            f"{self.settings.youtube_rtmps_url.rstrip('/')}/"
+            f"{self.settings.youtube_stream_key}"
+        )
+        video_filter = (
+            f"fps={fps},"
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
+        )
+
+        # Wallclock + CFR: OctoPrint-MJPEG ist oft VFR; YouTube braucht stabile Zeitstempel.
         return [
-            "ffmpeg", "-hide_banner", "-loglevel", "warning",
-            "-thread_queue_size", "512", "-i", self.settings.octoprint_webcam_url,
-            "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
-            "-vf", f"scale={self.settings.video_width}:{self.settings.video_height}:force_original_aspect_ratio=decrease,pad={self.settings.video_width}:{self.settings.video_height}:(ow-iw)/2:(oh-ih)/2",
-            "-r", str(self.settings.video_fps), "-c:v", "libx264", "-preset", "veryfast",
-            "-tune", "zerolatency", "-pix_fmt", "yuv420p", "-b:v", self.settings.video_bitrate,
-            "-maxrate", self.settings.video_bitrate, "-bufsize", "6000k",
-            "-g", str(self.settings.video_fps * 2), "-c:a", "aac", "-b:a", self.settings.audio_bitrate,
-            "-ar", "44100", "-f", "flv", output_url,
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "warning",
+            "-reconnect",
+            "1",
+            "-reconnect_streamed",
+            "1",
+            "-reconnect_delay_max",
+            "5",
+            "-fflags",
+            "+genpts+discardcorrupt",
+            "-use_wallclock_as_timestamps",
+            "1",
+            "-thread_queue_size",
+            "512",
+            "-i",
+            self.settings.octoprint_webcam_url,
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=channel_layout=stereo:sample_rate=44100",
+            "-vf",
+            video_filter,
+            "-r",
+            str(fps),
+            "-fps_mode",
+            "cfr",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-tune",
+            "zerolatency",
+            "-pix_fmt",
+            "yuv420p",
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            bitrate,
+            "-bufsize",
+            bufsize_from_bitrate(bitrate),
+            "-g",
+            gop,
+            "-keyint_min",
+            gop,
+            "-sc_threshold",
+            "0",
+            "-c:a",
+            "aac",
+            "-b:a",
+            self.settings.audio_bitrate,
+            "-ar",
+            "44100",
+            "-f",
+            "flv",
+            output_url,
         ]
 
     async def start(self) -> StreamStatus:
