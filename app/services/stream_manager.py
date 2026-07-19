@@ -45,15 +45,21 @@ class StreamManager:
         self.state = StreamState.STARTING
         log_handle = open(self.log_dir / "ffmpeg.log", "ab", buffering=0)
         try:
-            self.process = await asyncio.create_subprocess_exec(*self.build_command(), stdout=log_handle, stderr=log_handle)
+            self.process = await asyncio.create_subprocess_exec(
+                *self.build_command(),
+                stdout=log_handle,
+                stderr=log_handle,
+            )
             self.state = StreamState.RUNNING
             self.last_error = None
             return self.status()
         except Exception as exc:
             self.state = StreamState.ERROR
             self.last_error = str(exc)
-            log_handle.close()
             raise
+        finally:
+            # Child already inherited the FDs; always close the parent's handle.
+            log_handle.close()
 
     async def stop(self) -> StreamStatus:
         if not self.process or self.process.returncode is not None:
