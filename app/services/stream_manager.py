@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Optional
 from app.config import Settings
 from app.core.models import StreamState
 
+logger = logging.getLogger(__name__)
 
 def parse_bitrate_k(bitrate: str) -> int:
     match = re.fullmatch(r"(\d+)([kKmM]?)", bitrate.strip())
@@ -51,10 +53,11 @@ class StreamManager:
 
         fps = self.settings.video_fps
         if fps < 15:
-            raise ValueError(
-                "YouTube Live benötigt mindestens 15 FPS, sonst meldet YouTube "
-                "zu wenig Videodaten. Setze VIDEO_FPS=15 (oder 30) in der .env."
+            logger.warning(
+                "VIDEO_FPS=%s ist zu niedrig für YouTube Live – verwende 15 FPS.",
+                fps,
             )
+            fps = 15
 
         width = self.settings.video_width
         height = self.settings.video_height

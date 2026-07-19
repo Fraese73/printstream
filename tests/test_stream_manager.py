@@ -40,15 +40,17 @@ def test_requires_webcam_url() -> None:
         ).build_command()
 
 
-def test_rejects_fps_below_youtube_minimum() -> None:
-    with pytest.raises(ValueError, match="15 FPS"):
-        StreamManager(
-            Settings(
-                youtube_stream_key="test",
-                octoprint_webcam_url="http://cam",
-                video_fps=5,
-            )
-        ).build_command()
+def test_clamps_fps_below_youtube_minimum() -> None:
+    command = StreamManager(
+        Settings(
+            youtube_stream_key="test",
+            octoprint_webcam_url="http://cam",
+            video_fps=5,
+        )
+    ).build_command()
+    assert any(part.startswith("fps=15,") for part in command)
+    assert command[command.index("-r") + 1] == "15"
+    assert command[command.index("-g") + 1] == "30"
 
 
 @pytest.mark.asyncio
