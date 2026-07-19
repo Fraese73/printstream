@@ -1,8 +1,10 @@
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
 httpx==0.28.1
-python-dotenv==1.1.1
 jinja2==3.1.6
 pydantic-settings==2.10.1
 pytest==8.4.1
-pytest-asyncio==1.0.0
+pytest-asyncio==1.1.0
+ruff==0.12.4
+black==25.1.0
+mypy==1.17.0

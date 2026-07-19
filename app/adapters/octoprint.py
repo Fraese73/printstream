@@ -2,12 +2,12 @@ from typing import Any
 import httpx
 from app.config import Settings
 
-class OctoPrintClient:
+class OctoPrintAdapter:
     def __init__(self, settings: Settings) -> None:
         self.base_url = settings.octoprint_base_url.rstrip("/")
         self.api_key = settings.octoprint_api_key
 
-    async def get_printer_status(self) -> dict[str, Any]:
+    async def get_status(self) -> dict[str, Any]:
         if not self.api_key:
             return {"connected": False, "error": "Kein OctoPrint-API-Key konfiguriert."}
         headers = {"X-Api-Key": self.api_key}

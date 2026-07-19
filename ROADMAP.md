@@ -1,23 +1,36 @@
-# Roadmap
+# PrintStream Roadmap
 
-## Phase 1 – MVP
+## Milestone 1 – MVP
+
 - [x] FastAPI-Grundgerüst
 - [x] FFmpeg-Prozesssteuerung
-- [x] OctoPrint-Statusabfrage
+- [x] OctoPrint-Anbindung
+- [x] API unter `/api/v1`
 - [x] einfache Weboberfläche
-- [ ] Teststream auf YouTube
-- [x] robuste Fehlerbehandlung
-- [ ] systemd-Dienst
+- [ ] YouTube-Teststream
+- [ ] Logging mit Rotation
+- [ ] automatischer FFmpeg-Neustart
+- [ ] systemd-Test
 
-## Phase 2 – Overlay
-- [x] Druckfortschritt
-- [x] Temperaturen
-- [x] Restzeit
-- [x] Dateiname und Uhrzeit
+## Milestone 2 – Overlay
+
+- [ ] Fortschritt
+- [ ] Temperaturen
+- [ ] Layer
+- [ ] Restzeit
+- [ ] Uhrzeit
 - [ ] Logo
 
-## Phase 3 – Automatisierung
-- [ ] automatisch bei Druckstart starten
-- [ ] bei Druckende stoppen
-- [ ] ioBroker-Lichtsteuerung
-- [ ] automatischer Neustart
+## Milestone 3 – Automatisierung
+
+- [ ] Start bei Druckbeginn
+- [ ] Stop bei Druckende
+- [ ] ioBroker-Integration
+- [ ] Benachrichtigungen
+
+## Später
+
+- mehrere Kameras
+- mehrere Drucker
+- Twitch, RTMP und SRT
+- Plugin-System
