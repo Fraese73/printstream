@@ -15,7 +15,12 @@ class Settings(BaseSettings):
     video_fps: int = 15
     video_bitrate: str = "3000k"
     audio_bitrate: str = "128k"
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
 @lru_cache
 def get_settings() -> Settings:
