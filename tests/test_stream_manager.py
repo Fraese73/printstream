@@ -13,8 +13,8 @@ def test_build_command() -> None:
         octoprint_webcam_url="http://cam",
         youtube_rtmps_url="rtmps://example/live2",
         youtube_stream_key="test",
-        video_fps=5,
-        video_bitrate="1000k",
+        video_fps=15,
+        video_bitrate="2500k",
     )
     c = StreamManager(s).build_command()
     assert c[0] == "ffmpeg"
@@ -23,9 +23,9 @@ def test_build_command() -> None:
     assert "-use_wallclock_as_timestamps" in c
     assert "-fps_mode" in c
     assert "cfr" in c
-    assert any(part.startswith("fps=5,") for part in c)
-    assert "2000k" in c  # bufsize = 2x bitrate
-    assert c[c.index("-g") + 1] == "10"
+    assert any(part.startswith("fps=15,") for part in c)
+    assert "5000k" in c  # bufsize = 2x bitrate
+    assert c[c.index("-g") + 1] == "30"
 
 
 def test_requires_stream_key() -> None:
@@ -37,6 +37,17 @@ def test_requires_webcam_url() -> None:
     with pytest.raises(ValueError, match="Webcam"):
         StreamManager(
             Settings(youtube_stream_key="test", octoprint_webcam_url="")
+        ).build_command()
+
+
+def test_rejects_fps_below_youtube_minimum() -> None:
+    with pytest.raises(ValueError, match="15 FPS"):
+        StreamManager(
+            Settings(
+                youtube_stream_key="test",
+                octoprint_webcam_url="http://cam",
+                video_fps=5,
+            )
         ).build_command()
 
 

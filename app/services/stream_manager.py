@@ -50,10 +50,16 @@ class StreamManager:
             raise ValueError("Keine OctoPrint-Webcam-URL konfiguriert.")
 
         fps = self.settings.video_fps
+        if fps < 15:
+            raise ValueError(
+                "YouTube Live benötigt mindestens 15 FPS, sonst meldet YouTube "
+                "zu wenig Videodaten. Setze VIDEO_FPS=15 (oder 30) in der .env."
+            )
+
         width = self.settings.video_width
         height = self.settings.video_height
         bitrate = self.settings.video_bitrate
-        gop = str(max(fps * 2, 2))
+        gop = str(fps * 2)
         output_url = (
             f"{self.settings.youtube_rtmps_url.rstrip('/')}/"
             f"{self.settings.youtube_stream_key}"
@@ -61,7 +67,8 @@ class StreamManager:
         video_filter = (
             f"fps={fps},"
             f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
+            "format=yuv420p"
         )
 
         # Wallclock + CFR: OctoPrint-MJPEG ist oft VFR; YouTube braucht stabile Zeitstempel.
@@ -76,6 +83,8 @@ class StreamManager:
             "1",
             "-reconnect_delay_max",
             "5",
+            "-rw_timeout",
+            "15000000",
             "-fflags",
             "+genpts+discardcorrupt",
             "-use_wallclock_as_timestamps",
@@ -103,6 +112,8 @@ class StreamManager:
             "-pix_fmt",
             "yuv420p",
             "-b:v",
+            bitrate,
+            "-minrate",
             bitrate,
             "-maxrate",
             bitrate,
