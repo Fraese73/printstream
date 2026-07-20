@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -12,6 +13,10 @@ from app.config import get_settings
 from app.services.stream_manager import StreamManager
 
 settings = get_settings()
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 stream_manager = StreamManager(settings)
 octoprint = OctoPrintAdapter(settings)
 

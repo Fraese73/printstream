@@ -44,7 +44,7 @@ class StreamManager:
         self.process: Optional[asyncio.subprocess.Process] = None
         self.state = StreamState.STOPPED
         self.last_error: Optional[str] = None
-        self.log_dir = Path("logs")
+        self.log_dir = Path("logs").resolve()
         self.log_dir.mkdir(exist_ok=True)
         self.desired_state_path = self.log_dir / "desired_stream"
 
@@ -196,23 +196,49 @@ class StreamManager:
 
     async def resume_if_desired(self) -> None:
         if not self.settings.stream_auto_resume:
+            logger.info("Auto-Resume ist deaktiviert (STREAM_AUTO_RESUME=false).")
             return
         if not self.is_desired_running():
+            logger.info(
+                "Kein Auto-Resume: %s ist nicht 'running' (vorher einmal Start klicken).",
+                self.desired_state_path,
+            )
             return
+
         delay = max(0.0, self.settings.stream_resume_delay_seconds)
         logger.info(
-            "Gewünschter Stream-Zustand ist 'running' – starte in %.0fs neu (nach Reboot).",
+            "Auto-Resume: Stream war aktiv – warte %.0fs, dann bis zu 5 Startversuche.",
             delay,
         )
         if delay:
             await asyncio.sleep(delay)
-        if not self.is_desired_running():
-            return
-        try:
-            await self.start(user_requested=False)
-            logger.info("Stream nach Reboot fortgesetzt.")
-        except Exception:
-            logger.exception("Auto-Resume des Streams ist fehlgeschlagen.")
+
+        last_error: Optional[Exception] = None
+        for attempt in range(1, 6):
+            if not self.is_desired_running():
+                logger.info("Auto-Resume abgebrochen: gewünschter Zustand nicht mehr 'running'.")
+                return
+            if self.process and self.process.returncode is None:
+                logger.info("Auto-Resume: Stream läuft bereits.")
+                return
+            try:
+                await self.start(user_requested=False)
+                logger.info("Auto-Resume erfolgreich (Versuch %s/5).", attempt)
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                last_error = exc
+                self.last_error = str(exc)
+                logger.warning(
+                    "Auto-Resume Versuch %s/5 fehlgeschlagen: %s",
+                    attempt,
+                    exc,
+                )
+                await asyncio.sleep(30)
+
+        logger.error("Auto-Resume endgültig fehlgeschlagen: %s", last_error)
+        self.state = StreamState.ERROR
 
     def status(self) -> StreamStatus:
         return StreamStatus(

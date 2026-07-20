@@ -178,3 +178,34 @@ async def test_resume_if_desired_starts_stream(tmp_path: Path) -> None:
 
     mock_exec.assert_awaited_once()
     assert manager.state == StreamState.RUNNING
+
+
+@pytest.mark.asyncio
+async def test_resume_retries_after_failure(tmp_path: Path) -> None:
+    settings = Settings(
+        youtube_stream_key="test",
+        octoprint_webcam_url="http://cam",
+        stream_auto_resume=True,
+        stream_resume_delay_seconds=0,
+    )
+    manager = StreamManager(settings)
+    manager.log_dir = tmp_path
+    manager.desired_state_path = tmp_path / "desired_stream"
+    manager.set_desired_running(True)
+
+    fake_process = MagicMock()
+    fake_process.returncode = None
+    fake_process.pid = 100
+
+    with (
+        patch(
+            "app.services.stream_manager.asyncio.create_subprocess_exec",
+            new_callable=AsyncMock,
+            side_effect=[OSError("network down"), fake_process],
+        ) as mock_exec,
+        patch("app.services.stream_manager.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        await manager.resume_if_desired()
+
+    assert mock_exec.await_count == 2
+    assert manager.state == StreamState.RUNNING
