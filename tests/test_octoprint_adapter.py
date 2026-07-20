@@ -1,5 +1,4 @@
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -40,8 +39,7 @@ async def test_get_status_merges_display_layer_progress() -> None:
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=None)
 
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("app.adapters.octoprint.httpx.AsyncClient", lambda **_: client)
+    with patch("app.adapters.octoprint.httpx.AsyncClient", return_value=client):
         status = await adapter.get_status()
 
     assert status["connected"] is True
@@ -74,8 +72,7 @@ async def test_get_status_works_without_layer_plugin() -> None:
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=None)
 
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("app.adapters.octoprint.httpx.AsyncClient", lambda **_: client)
+    with patch("app.adapters.octoprint.httpx.AsyncClient", return_value=client):
         status = await adapter.get_status()
 
     assert status["connected"] is True
