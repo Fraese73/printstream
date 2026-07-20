@@ -51,6 +51,7 @@ def test_build_command_includes_drawtext_when_overlay_enabled(tmp_path: Path) ->
     vf = command[command.index("-vf") + 1]
     assert "drawtext=" in vf
     assert "reload=1" in vf
+    assert "expansion=none" in vf
     assert "textfile=" in vf
 
 

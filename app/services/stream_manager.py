@@ -84,6 +84,7 @@ class StreamManager:
                 f"fontfile={fontfile}:"
                 f"textfile={textfile}:"
                 "reload=1:"
+                "expansion=none:"
                 f"fontsize={self.settings.overlay_font_size}:"
                 f"fontcolor={self.settings.overlay_font_color}:"
                 f"x={self.settings.overlay_x}:"
