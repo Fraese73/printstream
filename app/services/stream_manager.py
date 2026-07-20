@@ -124,7 +124,7 @@ class StreamManager:
         y = self.settings.overlay_logo_y
         steps = [
             f"{base}[base]",
-            f"movie={movie},scale={logo_w}:-1[logo]",
+            f"movie={movie},format=rgba,scale={logo_w}:-1[logo]",
         ]
         if text_on:
             steps.append(f"[base][logo]overlay=x={x}:y={y}:format=auto[tmp]")
