@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,8 +18,14 @@ octoprint = OctoPrintAdapter(settings)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    yield
-    await stream_manager.stop()
+    # Nach Reboot: gewünschten Stream wieder aufnehmen, ohne den Start zu blockieren.
+    resume_task = asyncio.create_task(stream_manager.resume_if_desired())
+    try:
+        yield
+    finally:
+        resume_task.cancel()
+        # Herunterfahren (z. B. nächtlicher Reboot) darf den Wunschzustand nicht löschen.
+        await stream_manager.stop(user_requested=False)
 
 
 app = FastAPI(title="PrintStream", version="0.1.0", lifespan=lifespan)

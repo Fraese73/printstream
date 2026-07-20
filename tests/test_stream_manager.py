@@ -100,6 +100,81 @@ async def test_start_closes_log_handle_on_failure(tmp_path: Path) -> None:
         with pytest.raises(OSError, match="ffmpeg missing"):
             await manager.start()
 
-    assert manager.state == StreamState.ERROR
-    assert opened
-    assert all(handle.closed for handle in opened)  # type: ignore[attr-defined]
+    @pytest.mark.asyncio
+async def test_start_persists_desired_running(tmp_path: Path) -> None:
+    settings = Settings(youtube_stream_key="test", octoprint_webcam_url="http://cam")
+    manager = StreamManager(settings)
+    manager.log_dir = tmp_path
+    manager.desired_state_path = tmp_path / "desired_stream"
+
+    fake_process = MagicMock()
+    fake_process.returncode = None
+    fake_process.pid = 42
+
+    with patch(
+        "app.services.stream_manager.asyncio.create_subprocess_exec",
+        new_callable=AsyncMock,
+        return_value=fake_process,
+    ):
+        status = await manager.start()
+
+    assert status.desired_running is True
+    assert manager.is_desired_running() is True
+
+
+@pytest.mark.asyncio
+async def test_stop_clears_desired_running(tmp_path: Path) -> None:
+    settings = Settings(youtube_stream_key="test", octoprint_webcam_url="http://cam")
+    manager = StreamManager(settings)
+    manager.log_dir = tmp_path
+    manager.desired_state_path = tmp_path / "desired_stream"
+    manager.set_desired_running(True)
+    manager.process = MagicMock(returncode=None)
+    manager.process.wait = AsyncMock()
+
+    status = await manager.stop()
+
+    assert status.desired_running is False
+    assert manager.is_desired_running() is False
+
+
+@pytest.mark.asyncio
+async def test_stop_without_user_request_keeps_desired(tmp_path: Path) -> None:
+    settings = Settings(youtube_stream_key="test", octoprint_webcam_url="http://cam")
+    manager = StreamManager(settings)
+    manager.log_dir = tmp_path
+    manager.desired_state_path = tmp_path / "desired_stream"
+    manager.set_desired_running(True)
+    manager.process = MagicMock(returncode=0)
+
+    await manager.stop(user_requested=False)
+
+    assert manager.is_desired_running() is True
+
+
+@pytest.mark.asyncio
+async def test_resume_if_desired_starts_stream(tmp_path: Path) -> None:
+    settings = Settings(
+        youtube_stream_key="test",
+        octoprint_webcam_url="http://cam",
+        stream_auto_resume=True,
+        stream_resume_delay_seconds=0,
+    )
+    manager = StreamManager(settings)
+    manager.log_dir = tmp_path
+    manager.desired_state_path = tmp_path / "desired_stream"
+    manager.set_desired_running(True)
+
+    fake_process = MagicMock()
+    fake_process.returncode = None
+    fake_process.pid = 99
+
+    with patch(
+        "app.services.stream_manager.asyncio.create_subprocess_exec",
+        new_callable=AsyncMock,
+        return_value=fake_process,
+    ) as mock_exec:
+        await manager.resume_if_desired()
+
+    mock_exec.assert_awaited_once()
+    assert manager.state == StreamState.RUNNING

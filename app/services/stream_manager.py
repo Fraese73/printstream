@@ -10,6 +10,7 @@ from app.core.models import StreamState
 
 logger = logging.getLogger(__name__)
 
+
 def parse_bitrate_k(bitrate: str) -> int:
     match = re.fullmatch(r"(\d+)([kKmM]?)", bitrate.strip())
     if not match:
@@ -31,6 +32,7 @@ class StreamStatus:
     pid: Optional[int] = None
     return_code: Optional[int] = None
     last_error: Optional[str] = None
+    desired_running: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -44,6 +46,19 @@ class StreamManager:
         self.last_error: Optional[str] = None
         self.log_dir = Path("logs")
         self.log_dir.mkdir(exist_ok=True)
+        self.desired_state_path = self.log_dir / "desired_stream"
+
+    def is_desired_running(self) -> bool:
+        try:
+            return self.desired_state_path.read_text(encoding="utf-8").strip() == "running"
+        except OSError:
+            return False
+
+    def set_desired_running(self, running: bool) -> None:
+        self.desired_state_path.write_text(
+            "running" if running else "stopped",
+            encoding="utf-8",
+        )
 
     def build_command(self) -> list[str]:
         if not self.settings.youtube_stream_key:
@@ -139,7 +154,9 @@ class StreamManager:
             output_url,
         ]
 
-    async def start(self) -> StreamStatus:
+    async def start(self, *, user_requested: bool = True) -> StreamStatus:
+        if user_requested:
+            self.set_desired_running(True)
         if self.process and self.process.returncode is None:
             return self.status()
         self.state = StreamState.STARTING
@@ -161,7 +178,9 @@ class StreamManager:
             # Child already inherited the FDs; always close the parent's handle.
             log_handle.close()
 
-    async def stop(self) -> StreamStatus:
+    async def stop(self, *, user_requested: bool = True) -> StreamStatus:
+        if user_requested:
+            self.set_desired_running(False)
         if not self.process or self.process.returncode is not None:
             self.state = StreamState.STOPPED
             return self.status()
@@ -175,5 +194,31 @@ class StreamManager:
         self.state = StreamState.STOPPED
         return self.status()
 
+    async def resume_if_desired(self) -> None:
+        if not self.settings.stream_auto_resume:
+            return
+        if not self.is_desired_running():
+            return
+        delay = max(0.0, self.settings.stream_resume_delay_seconds)
+        logger.info(
+            "Gewünschter Stream-Zustand ist 'running' – starte in %.0fs neu (nach Reboot).",
+            delay,
+        )
+        if delay:
+            await asyncio.sleep(delay)
+        if not self.is_desired_running():
+            return
+        try:
+            await self.start(user_requested=False)
+            logger.info("Stream nach Reboot fortgesetzt.")
+        except Exception:
+            logger.exception("Auto-Resume des Streams ist fehlgeschlagen.")
+
     def status(self) -> StreamStatus:
-        return StreamStatus(self.state, self.process.pid if self.process else None, self.process.returncode if self.process else None, self.last_error)
+        return StreamStatus(
+            state=self.state,
+            pid=self.process.pid if self.process else None,
+            return_code=self.process.returncode if self.process else None,
+            last_error=self.last_error,
+            desired_running=self.is_desired_running(),
+        )

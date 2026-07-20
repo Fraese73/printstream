@@ -1,5 +1,7 @@
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
@@ -15,12 +17,15 @@ class Settings(BaseSettings):
     video_fps: int = 15
     video_bitrate: str = "3000k"
     audio_bitrate: str = "128k"
+    stream_auto_resume: bool = True
+    stream_resume_delay_seconds: float = 45.0
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
+
 
 @lru_cache
 def get_settings() -> Settings:

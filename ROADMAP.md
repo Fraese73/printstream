@@ -10,6 +10,7 @@
 - [ ] YouTube-Teststream
 - [ ] Logging mit Rotation
 - [ ] automatischer FFmpeg-Neustart
+- [x] Stream-Resume nach Reboot
 - [ ] systemd-Test
 
 ## Milestone 2 – Overlay
