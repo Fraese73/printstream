@@ -67,31 +67,71 @@ class StreamManager:
             encoding="utf-8",
         )
 
+    def resolve_logo_path(self) -> Optional[Path]:
+        if not self.settings.overlay_logo_enabled:
+            return None
+        path = Path(self.settings.overlay_logo_path)
+        if not path.is_absolute():
+            path = (Path.cwd() / path).resolve()
+        else:
+            path = path.resolve()
+        if not path.is_file():
+            logger.warning("Logo aktiviert, aber Datei fehlt: %s", path)
+            return None
+        return path
+
+    @staticmethod
+    def _escape_movie_path(path: Path) -> str:
+        return str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+
+    def _drawtext_filter(self) -> str:
+        fontfile = self.settings.overlay_font_path.replace(":", "\\:")
+        textfile = str(self.overlay_path.resolve()).replace(":", "\\:")
+        return (
+            "drawtext="
+            f"fontfile={fontfile}:"
+            f"textfile={textfile}:"
+            "reload=1:"
+            "expansion=none:"
+            f"fontsize={self.settings.overlay_font_size}:"
+            f"fontcolor={self.settings.overlay_font_color}:"
+            f"x={self.settings.overlay_x}:"
+            f"y={self.settings.overlay_y}:"
+            "box=1:boxcolor=black@0.45:boxborderw=8"
+        )
+
     def build_video_filter(self, fps: int) -> str:
         width = self.settings.video_width
         height = self.settings.video_height
-        filters = [
-            f"fps={fps}",
-            f"scale={width}:{height}:force_original_aspect_ratio=decrease",
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
-            "format=yuv420p",
+        base = (
+            f"fps={fps},"
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
+            "format=yuv420p"
+        )
+        logo_path = self.resolve_logo_path()
+        text_on = self.settings.overlay_enabled
+
+        if not logo_path and not text_on:
+            return base
+
+        if not logo_path and text_on:
+            return f"{base},{self._drawtext_filter()}"
+
+        movie = self._escape_movie_path(logo_path)
+        logo_w = self.settings.overlay_logo_width
+        x = self.settings.overlay_logo_x
+        y = self.settings.overlay_logo_y
+        steps = [
+            f"{base}[base]",
+            f"movie={movie},scale={logo_w}:-1[logo]",
         ]
-        if self.settings.overlay_enabled:
-            fontfile = self.settings.overlay_font_path.replace(":", "\\:")
-            textfile = str(self.overlay_path.resolve()).replace(":", "\\:")
-            filters.append(
-                "drawtext="
-                f"fontfile={fontfile}:"
-                f"textfile={textfile}:"
-                "reload=1:"
-                "expansion=none:"
-                f"fontsize={self.settings.overlay_font_size}:"
-                f"fontcolor={self.settings.overlay_font_color}:"
-                f"x={self.settings.overlay_x}:"
-                f"y={self.settings.overlay_y}:"
-                "box=1:boxcolor=black@0.45:boxborderw=8"
-            )
-        return ",".join(filters)
+        if text_on:
+            steps.append(f"[base][logo]overlay=x={x}:y={y}:format=auto[tmp]")
+            steps.append(f"[tmp]{self._drawtext_filter()}")
+        else:
+            steps.append(f"[base][logo]overlay=x={x}:y={y}:format=auto")
+        return ";".join(steps)
 
     def build_command(self) -> list[str]:
         if not self.settings.youtube_stream_key:

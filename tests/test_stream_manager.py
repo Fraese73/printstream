@@ -22,6 +22,7 @@ def test_build_command() -> None:
         video_fps=15,
         video_bitrate="2500k",
         overlay_enabled=False,
+        overlay_logo_enabled=False,
     )
     c = StreamManager(s).build_command()
     assert c[0] == "ffmpeg"
@@ -34,6 +35,7 @@ def test_build_command() -> None:
     assert "5000k" in c
     assert c[c.index("-g") + 1] == "30"
     assert "drawtext=" not in "".join(c)
+    assert "movie=" not in "".join(c)
 
 
 def test_build_command_includes_drawtext_when_overlay_enabled(tmp_path: Path) -> None:
@@ -42,6 +44,7 @@ def test_build_command_includes_drawtext_when_overlay_enabled(tmp_path: Path) ->
         youtube_rtmps_url="rtmps://example/live2",
         youtube_stream_key="test",
         overlay_enabled=True,
+        overlay_logo_enabled=False,
         overlay_font_path="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     )
     manager = StreamManager(s)
@@ -53,6 +56,29 @@ def test_build_command_includes_drawtext_when_overlay_enabled(tmp_path: Path) ->
     assert "reload=1" in vf
     assert "expansion=none" in vf
     assert "textfile=" in vf
+
+
+def test_build_command_includes_logo_overlay(tmp_path: Path) -> None:
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"\x89PNG\r\n\x1a\n")
+    s = Settings(
+        octoprint_webcam_url="http://cam",
+        youtube_rtmps_url="rtmps://example/live2",
+        youtube_stream_key="test",
+        overlay_enabled=True,
+        overlay_logo_enabled=True,
+        overlay_logo_path=str(logo),
+        overlay_logo_width=100,
+        overlay_font_path="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    )
+    manager = StreamManager(s)
+    manager.log_dir = tmp_path
+    manager.overlay_path = tmp_path / "overlay.txt"
+    vf = manager.build_video_filter(15)
+    assert "movie=" in vf
+    assert "overlay=x=" in vf
+    assert "drawtext=" in vf
+    assert "expansion=none" in vf
 
 
 def test_requires_stream_key() -> None:
@@ -74,6 +100,7 @@ def test_clamps_fps_below_youtube_minimum() -> None:
             octoprint_webcam_url="http://cam",
             video_fps=5,
             overlay_enabled=False,
+            overlay_logo_enabled=False,
         )
     ).build_command()
     assert any(part.startswith("fps=15,") or ",fps=15," in part for part in command)

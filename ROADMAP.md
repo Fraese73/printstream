@@ -20,7 +20,7 @@
 - [x] Layer (wenn OctoPrint/Plugin liefert, sonst —)
 - [x] Restzeit
 - [x] Uhrzeit
-- [ ] Logo
+- [x] Logo
 
 ## Milestone 3 – Automatisierung
 

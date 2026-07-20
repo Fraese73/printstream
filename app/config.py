@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     overlay_x: str = "24"
     overlay_y: str = "24"
     overlay_interval_seconds: float = 5.0
+    overlay_logo_enabled: bool = True
+    overlay_logo_path: str = "assets/logo.png"
+    overlay_logo_width: int = 120
+    overlay_logo_x: str = "W-w-24"
+    overlay_logo_y: str = "24"
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
