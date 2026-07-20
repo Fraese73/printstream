@@ -15,11 +15,11 @@
 
 ## Milestone 2 – Overlay
 
-- [ ] Fortschritt
-- [ ] Temperaturen
-- [ ] Layer
-- [ ] Restzeit
-- [ ] Uhrzeit
+- [x] Fortschritt
+- [x] Temperaturen
+- [x] Layer (wenn OctoPrint/Plugin liefert, sonst —)
+- [x] Restzeit
+- [x] Uhrzeit
 - [ ] Logo
 
 ## Milestone 3 – Automatisierung

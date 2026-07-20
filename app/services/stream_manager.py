@@ -7,6 +7,7 @@ from typing import Optional
 
 from app.config import Settings
 from app.core.models import StreamState
+from app.services.overlay import OverlayWriter
 
 logger = logging.getLogger(__name__)
 
@@ -39,14 +40,20 @@ class StreamStatus:
 
 
 class StreamManager:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        overlay: Optional[OverlayWriter] = None,
+    ) -> None:
         self.settings = settings
+        self.overlay = overlay
         self.process: Optional[asyncio.subprocess.Process] = None
         self.state = StreamState.STOPPED
         self.last_error: Optional[str] = None
         self.log_dir = Path("logs").resolve()
         self.log_dir.mkdir(exist_ok=True)
         self.desired_state_path = self.log_dir / "desired_stream"
+        self.overlay_path = self.log_dir / "overlay.txt"
 
     def is_desired_running(self) -> bool:
         try:
@@ -59,6 +66,31 @@ class StreamManager:
             "running" if running else "stopped",
             encoding="utf-8",
         )
+
+    def build_video_filter(self, fps: int) -> str:
+        width = self.settings.video_width
+        height = self.settings.video_height
+        filters = [
+            f"fps={fps}",
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease",
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+            "format=yuv420p",
+        ]
+        if self.settings.overlay_enabled:
+            fontfile = self.settings.overlay_font_path.replace(":", "\\:")
+            textfile = str(self.overlay_path.resolve()).replace(":", "\\:")
+            filters.append(
+                "drawtext="
+                f"fontfile={fontfile}:"
+                f"textfile={textfile}:"
+                "reload=1:"
+                f"fontsize={self.settings.overlay_font_size}:"
+                f"fontcolor={self.settings.overlay_font_color}:"
+                f"x={self.settings.overlay_x}:"
+                f"y={self.settings.overlay_y}:"
+                "box=1:boxcolor=black@0.45:boxborderw=8"
+            )
+        return ",".join(filters)
 
     def build_command(self) -> list[str]:
         if not self.settings.youtube_stream_key:
@@ -74,19 +106,11 @@ class StreamManager:
             )
             fps = 15
 
-        width = self.settings.video_width
-        height = self.settings.video_height
         bitrate = self.settings.video_bitrate
         gop = str(fps * 2)
         output_url = (
             f"{self.settings.youtube_rtmps_url.rstrip('/')}/"
             f"{self.settings.youtube_stream_key}"
-        )
-        video_filter = (
-            f"fps={fps},"
-            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
-            "format=yuv420p"
         )
 
         # Wallclock + CFR: OctoPrint-MJPEG ist oft VFR; YouTube braucht stabile Zeitstempel.
@@ -116,7 +140,7 @@ class StreamManager:
             "-i",
             "anullsrc=channel_layout=stereo:sample_rate=44100",
             "-vf",
-            video_filter,
+            self.build_video_filter(fps),
             "-r",
             str(fps),
             "-fps_mode",
@@ -159,6 +183,18 @@ class StreamManager:
             self.set_desired_running(True)
         if self.process and self.process.returncode is None:
             return self.status()
+
+        if self.settings.overlay_enabled:
+            if self.overlay:
+                await self.overlay.start()
+            else:
+                self.overlay_path.parent.mkdir(parents=True, exist_ok=True)
+                if not self.overlay_path.exists():
+                    self.overlay_path.write_text(
+                        "PrintStream\nWarte auf Druckdaten …\n",
+                        encoding="utf-8",
+                    )
+
         self.state = StreamState.STARTING
         log_handle = open(self.log_dir / "ffmpeg.log", "ab", buffering=0)
         try:
@@ -173,6 +209,8 @@ class StreamManager:
         except Exception as exc:
             self.state = StreamState.ERROR
             self.last_error = str(exc)
+            if self.overlay:
+                await self.overlay.stop()
             raise
         finally:
             # Child already inherited the FDs; always close the parent's handle.
@@ -181,6 +219,8 @@ class StreamManager:
     async def stop(self, *, user_requested: bool = True) -> StreamStatus:
         if user_requested:
             self.set_desired_running(False)
+        if self.overlay:
+            await self.overlay.stop()
         if not self.process or self.process.returncode is not None:
             self.state = StreamState.STOPPED
             return self.status()

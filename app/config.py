@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     audio_bitrate: str = "128k"
     stream_auto_resume: bool = True
     stream_resume_delay_seconds: float = 45.0
+    overlay_enabled: bool = True
+    overlay_font_path: str = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    overlay_font_size: int = 28
+    overlay_font_color: str = "white"
+    overlay_x: str = "24"
+    overlay_y: str = "24"
+    overlay_interval_seconds: float = 5.0
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

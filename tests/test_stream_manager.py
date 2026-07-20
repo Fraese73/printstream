@@ -5,6 +5,12 @@ import pytest
 
 from app.config import Settings
 from app.core.models import StreamState
+from app.services.overlay import (
+    build_overlay_text,
+    format_layer,
+    format_remaining,
+    format_temp,
+)
 from app.services.stream_manager import StreamManager
 
 
@@ -15,6 +21,7 @@ def test_build_command() -> None:
         youtube_stream_key="test",
         video_fps=15,
         video_bitrate="2500k",
+        overlay_enabled=False,
     )
     c = StreamManager(s).build_command()
     assert c[0] == "ffmpeg"
@@ -24,8 +31,27 @@ def test_build_command() -> None:
     assert "-fps_mode" in c
     assert "cfr" in c
     assert any(part.startswith("fps=15,") for part in c)
-    assert "5000k" in c  # bufsize = 2x bitrate
+    assert "5000k" in c
     assert c[c.index("-g") + 1] == "30"
+    assert "drawtext=" not in "".join(c)
+
+
+def test_build_command_includes_drawtext_when_overlay_enabled(tmp_path: Path) -> None:
+    s = Settings(
+        octoprint_webcam_url="http://cam",
+        youtube_rtmps_url="rtmps://example/live2",
+        youtube_stream_key="test",
+        overlay_enabled=True,
+        overlay_font_path="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    )
+    manager = StreamManager(s)
+    manager.log_dir = tmp_path
+    manager.overlay_path = tmp_path / "overlay.txt"
+    command = manager.build_command()
+    vf = command[command.index("-vf") + 1]
+    assert "drawtext=" in vf
+    assert "reload=1" in vf
+    assert "textfile=" in vf
 
 
 def test_requires_stream_key() -> None:
@@ -46,18 +72,60 @@ def test_clamps_fps_below_youtube_minimum() -> None:
             youtube_stream_key="test",
             octoprint_webcam_url="http://cam",
             video_fps=5,
+            overlay_enabled=False,
         )
     ).build_command()
-    assert any(part.startswith("fps=15,") for part in command)
+    assert any(part.startswith("fps=15,") or ",fps=15," in part for part in command)
     assert command[command.index("-r") + 1] == "15"
     assert command[command.index("-g") + 1] == "30"
 
 
+def test_overlay_format_helpers() -> None:
+    assert format_remaining(3661) == "1:01:01"
+    assert format_remaining(90) == "1:30"
+    assert format_remaining(None) == "--:--"
+    assert format_temp({"actual": 210.4, "target": 215}) == "210/215°C"
+    assert format_temp(None) == "--"
+    assert format_layer({"currentLayer": 12, "totalLayer": 100}) == "12/100"
+    assert format_layer({}) == "—"
+
+
+def test_build_overlay_text_connected() -> None:
+    text = build_overlay_text(
+        {
+            "connected": True,
+            "state": {"text": "Printing", "flags": {"printing": True}},
+            "temperature": {
+                "tool0": {"actual": 200, "target": 200},
+                "bed": {"actual": 60, "target": 60},
+            },
+            "job": {"file": {"display": "benchy.gcode"}},
+            "progress": {
+                "completion": 42.5,
+                "printTimeLeft": 600,
+                "currentLayer": 10,
+                "totalLayer": 50,
+            },
+        }
+    )
+    assert "benchy.gcode" in text
+    assert "42.5%" in text
+    assert "Layer 10/50" in text
+    assert "Düse 200/200°C" in text
+    assert "Bett 60/60°C" in text
+    assert "Rest 10:00" in text
+
+
 @pytest.mark.asyncio
 async def test_start_closes_log_handle_on_success(tmp_path: Path) -> None:
-    settings = Settings(youtube_stream_key="test", octoprint_webcam_url="http://cam")
+    settings = Settings(
+        youtube_stream_key="test",
+        octoprint_webcam_url="http://cam",
+        overlay_enabled=False,
+    )
     manager = StreamManager(settings)
     manager.log_dir = tmp_path
+    manager.desired_state_path = tmp_path / "desired_stream"
 
     fake_process = MagicMock()
     fake_process.returncode = None
@@ -77,9 +145,14 @@ async def test_start_closes_log_handle_on_success(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_start_closes_log_handle_on_failure(tmp_path: Path) -> None:
-    settings = Settings(youtube_stream_key="test", octoprint_webcam_url="http://cam")
+    settings = Settings(
+        youtube_stream_key="test",
+        octoprint_webcam_url="http://cam",
+        overlay_enabled=False,
+    )
     manager = StreamManager(settings)
     manager.log_dir = tmp_path
+    manager.desired_state_path = tmp_path / "desired_stream"
     opened: list[object] = []
 
     real_open = open
@@ -100,9 +173,18 @@ async def test_start_closes_log_handle_on_failure(tmp_path: Path) -> None:
         with pytest.raises(OSError, match="ffmpeg missing"):
             await manager.start()
 
-    @pytest.mark.asyncio
+    assert manager.state == StreamState.ERROR
+    assert opened
+    assert all(handle.closed for handle in opened)  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
 async def test_start_persists_desired_running(tmp_path: Path) -> None:
-    settings = Settings(youtube_stream_key="test", octoprint_webcam_url="http://cam")
+    settings = Settings(
+        youtube_stream_key="test",
+        octoprint_webcam_url="http://cam",
+        overlay_enabled=False,
+    )
     manager = StreamManager(settings)
     manager.log_dir = tmp_path
     manager.desired_state_path = tmp_path / "desired_stream"
@@ -159,6 +241,7 @@ async def test_resume_if_desired_starts_stream(tmp_path: Path) -> None:
         octoprint_webcam_url="http://cam",
         stream_auto_resume=True,
         stream_resume_delay_seconds=0,
+        overlay_enabled=False,
     )
     manager = StreamManager(settings)
     manager.log_dir = tmp_path
@@ -187,6 +270,7 @@ async def test_resume_retries_after_failure(tmp_path: Path) -> None:
         octoprint_webcam_url="http://cam",
         stream_auto_resume=True,
         stream_resume_delay_seconds=0,
+        overlay_enabled=False,
     )
     manager = StreamManager(settings)
     manager.log_dir = tmp_path

@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from app.adapters.octoprint import OctoPrintAdapter
 from app.api.v1.router import create_api_router
 from app.config import get_settings
+from app.services.overlay import OverlayWriter
 from app.services.stream_manager import StreamManager
 
 settings = get_settings()
@@ -17,19 +18,23 @@ logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
-stream_manager = StreamManager(settings)
 octoprint = OctoPrintAdapter(settings)
+stream_manager = StreamManager(settings)
+overlay_writer = OverlayWriter(
+    settings=settings,
+    octoprint=octoprint,
+    overlay_path=stream_manager.overlay_path,
+)
+stream_manager.overlay = overlay_writer
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Nach Reboot: gewünschten Stream wieder aufnehmen, ohne den Start zu blockieren.
     resume_task = asyncio.create_task(stream_manager.resume_if_desired())
     try:
         yield
     finally:
         resume_task.cancel()
-        # Herunterfahren (z. B. nächtlicher Reboot) darf den Wunschzustand nicht löschen.
         await stream_manager.stop(user_requested=False)
 
 

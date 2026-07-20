@@ -3,7 +3,7 @@ set -euo pipefail
 APP_DIR=/opt/printstream
 APP_USER=${SUDO_USER:-pi}
 sudo apt update
-sudo apt install -y ffmpeg python3 python3-venv python3-pip
+sudo apt install -y ffmpeg python3 python3-venv python3-pip fonts-dejavu-core
 sudo mkdir -p "$APP_DIR"
 sudo cp -R . "$APP_DIR"
 sudo chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
