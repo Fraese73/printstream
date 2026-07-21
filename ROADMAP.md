@@ -24,7 +24,7 @@
 
 ## Milestone 3 – Automatisierung
 
-- [ ] Start bei Druckbeginn
+- [x] Start bei Druckbeginn
 - [ ] Stop bei Druckende
 - [ ] ioBroker-Integration
 - [ ] Benachrichtigungen

@@ -11,6 +11,7 @@ from app.adapters.octoprint import OctoPrintAdapter
 from app.api.v1.router import create_api_router
 from app.config import get_settings
 from app.services.overlay import OverlayWriter
+from app.services.print_automation import PrintAutomation
 from app.services.stream_manager import StreamManager
 
 settings = get_settings()
@@ -26,15 +27,22 @@ overlay_writer = OverlayWriter(
     overlay_path=stream_manager.overlay_path,
 )
 stream_manager.overlay = overlay_writer
+print_automation = PrintAutomation(
+    settings=settings,
+    octoprint=octoprint,
+    stream_manager=stream_manager,
+)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     resume_task = asyncio.create_task(stream_manager.resume_if_desired())
+    await print_automation.start()
     try:
         yield
     finally:
         resume_task.cancel()
+        await print_automation.stop()
         await stream_manager.stop(user_requested=False)
 
 
