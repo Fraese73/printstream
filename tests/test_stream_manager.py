@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -150,6 +151,7 @@ async def test_start_closes_log_handle_on_success(tmp_path: Path) -> None:
         youtube_stream_key="test",
         octoprint_webcam_url="http://cam",
         overlay_enabled=False,
+        stream_auto_restart=False,
     )
     manager = StreamManager(settings)
     manager.log_dir = tmp_path
@@ -177,6 +179,7 @@ async def test_start_closes_log_handle_on_failure(tmp_path: Path) -> None:
         youtube_stream_key="test",
         octoprint_webcam_url="http://cam",
         overlay_enabled=False,
+        stream_auto_restart=False,
     )
     manager = StreamManager(settings)
     manager.log_dir = tmp_path
@@ -212,6 +215,7 @@ async def test_start_persists_desired_running(tmp_path: Path) -> None:
         youtube_stream_key="test",
         octoprint_webcam_url="http://cam",
         overlay_enabled=False,
+        stream_auto_restart=False,
     )
     manager = StreamManager(settings)
     manager.log_dir = tmp_path
@@ -270,6 +274,7 @@ async def test_resume_if_desired_starts_stream(tmp_path: Path) -> None:
         stream_auto_resume=True,
         stream_resume_delay_seconds=0,
         overlay_enabled=False,
+        stream_auto_restart=False,
     )
     manager = StreamManager(settings)
     manager.log_dir = tmp_path
@@ -299,6 +304,7 @@ async def test_resume_retries_after_failure(tmp_path: Path) -> None:
         stream_auto_resume=True,
         stream_resume_delay_seconds=0,
         overlay_enabled=False,
+        stream_auto_restart=False,
     )
     manager = StreamManager(settings)
     manager.log_dir = tmp_path
@@ -321,3 +327,59 @@ async def test_resume_retries_after_failure(tmp_path: Path) -> None:
 
     assert mock_exec.await_count == 2
     assert manager.state == StreamState.RUNNING
+
+
+@pytest.mark.asyncio
+async def test_watchdog_restarts_ffmpeg_after_exit(tmp_path: Path) -> None:
+    settings = Settings(
+        youtube_stream_key="test",
+        octoprint_webcam_url="http://cam",
+        overlay_enabled=False,
+        stream_auto_restart=True,
+        stream_restart_delay_seconds=0,
+        stream_restart_max_attempts=0,
+    )
+    manager = StreamManager(settings)
+    manager.log_dir = tmp_path
+    manager.desired_state_path = tmp_path / "desired_stream"
+    manager.set_desired_running(True)
+
+    first = MagicMock()
+    first.returncode = None
+    first.pid = 1
+
+    async def first_wait() -> int:
+        first.returncode = 1
+        return 1
+
+    first.wait = AsyncMock(side_effect=first_wait)
+
+    second = MagicMock()
+    second.returncode = None
+    second.pid = 2
+    second_wait = asyncio.Event()
+    second.wait = AsyncMock(side_effect=second_wait.wait)
+
+    with (
+        patch(
+            "app.services.stream_manager.asyncio.create_subprocess_exec",
+            new_callable=AsyncMock,
+            side_effect=[first, second],
+        ) as mock_exec,
+        patch("app.services.stream_manager.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        await manager.start(user_requested=False)
+        assert manager._watch_task is not None
+        for _ in range(50):
+            if mock_exec.await_count >= 2:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("Watchdog hat FFmpeg nicht neu gestartet")
+
+        assert manager.process is second
+        assert manager.state == StreamState.RUNNING
+
+        manager._stopping = True
+        second_wait.set()
+        await asyncio.wait_for(manager._watch_task, timeout=1)

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     audio_bitrate: str = "128k"
     stream_auto_resume: bool = True
     stream_resume_delay_seconds: float = 45.0
+    stream_auto_restart: bool = True
+    stream_restart_delay_seconds: float = 10.0
+    stream_restart_max_attempts: int = 0
     overlay_enabled: bool = True
     overlay_font_path: str = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     overlay_font_size: int = 28

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
@@ -54,6 +55,10 @@ class StreamManager:
         self.log_dir.mkdir(exist_ok=True)
         self.desired_state_path = self.log_dir / "desired_stream"
         self.overlay_path = self.log_dir / "overlay.txt"
+        self._stopping = False
+        self._watch_task: Optional[asyncio.Task[None]] = None
+        self._process_started_at: float = 0.0
+        self._restart_failures = 0
 
     def is_desired_running(self) -> bool:
         try:
@@ -219,9 +224,84 @@ class StreamManager:
             output_url,
         ]
 
+    def _ensure_watchdog(self) -> None:
+        if not self.settings.stream_auto_restart:
+            return
+        if self._watch_task and not self._watch_task.done():
+            return
+        self._watch_task = asyncio.create_task(
+            self._watch_process(),
+            name="ffmpeg-watchdog",
+        )
+
+    async def _watch_process(self) -> None:
+        while True:
+            process = self.process
+            if process is None:
+                return
+
+            return_code = await process.wait()
+            ran_seconds = time.monotonic() - self._process_started_at
+            if ran_seconds >= 60:
+                self._restart_failures = 0
+
+            if self._stopping or not self.is_desired_running():
+                logger.info(
+                    "Watchdog: kein Neustart (stopping=%s desired=%s exit=%s).",
+                    self._stopping,
+                    self.is_desired_running(),
+                    return_code,
+                )
+                return
+
+            if not self.settings.stream_auto_restart:
+                self.state = StreamState.ERROR
+                self.last_error = f"FFmpeg beendet mit Code {return_code}"
+                return
+
+            self._restart_failures += 1
+            max_attempts = self.settings.stream_restart_max_attempts
+            if max_attempts > 0 and self._restart_failures > max_attempts:
+                self.state = StreamState.ERROR
+                self.last_error = (
+                    f"FFmpeg nach {max_attempts} Neustarts aufgegeben "
+                    f"(letzter Exit-Code {return_code})."
+                )
+                logger.error(self.last_error)
+                return
+
+            delay = max(0.0, self.settings.stream_restart_delay_seconds)
+            self.state = StreamState.ERROR
+            self.last_error = (
+                f"FFmpeg beendet mit Code {return_code}, "
+                f"Neustart in {delay:.0f}s (Versuch {self._restart_failures})."
+            )
+            logger.warning("%s", self.last_error)
+            if delay:
+                await asyncio.sleep(delay)
+
+            if self._stopping or not self.is_desired_running():
+                return
+
+            try:
+                await self.start(user_requested=False)
+                logger.info("Watchdog: FFmpeg neu gestartet.")
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self.state = StreamState.ERROR
+                self.last_error = f"Watchdog-Neustart fehlgeschlagen: {exc}"
+                logger.warning("%s", self.last_error)
+                if delay:
+                    await asyncio.sleep(delay)
+
     async def start(self, *, user_requested: bool = True) -> StreamStatus:
         if user_requested:
             self.set_desired_running(True)
+            self._stopping = False
+        elif self._stopping or not self.is_desired_running():
+            return self.status()
+
         if self.process and self.process.returncode is None:
             return self.status()
 
@@ -244,8 +324,10 @@ class StreamManager:
                 stdout=log_handle,
                 stderr=log_handle,
             )
+            self._process_started_at = time.monotonic()
             self.state = StreamState.RUNNING
             self.last_error = None
+            self._ensure_watchdog()
             return self.status()
         except Exception as exc:
             self.state = StreamState.ERROR
@@ -258,6 +340,7 @@ class StreamManager:
             log_handle.close()
 
     async def stop(self, *, user_requested: bool = True) -> StreamStatus:
+        self._stopping = True
         if user_requested:
             self.set_desired_running(False)
         if self.overlay:
@@ -272,6 +355,13 @@ class StreamManager:
         except asyncio.TimeoutError:
             self.process.kill()
             await self.process.wait()
+
+        if self._watch_task and not self._watch_task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(self._watch_task), timeout=2)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                self._watch_task.cancel()
+
         self.state = StreamState.STOPPED
         return self.status()
 

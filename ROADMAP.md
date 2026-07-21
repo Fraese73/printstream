@@ -9,7 +9,7 @@
 - [x] einfache Weboberfläche
 - [ ] YouTube-Teststream
 - [ ] Logging mit Rotation
-- [ ] automatischer FFmpeg-Neustart
+- [x] automatischer FFmpeg-Neustart
 - [x] Stream-Resume nach Reboot
 - [ ] systemd-Test
 
