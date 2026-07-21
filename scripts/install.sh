@@ -11,6 +11,8 @@ cd "$APP_DIR"
 sudo -u "$APP_USER" python3 -m venv .venv
 sudo -u "$APP_USER" .venv/bin/pip install -r requirements.txt
 [ -f .env ] || sudo -u "$APP_USER" cp .env.example .env
+[ -f .env.secrets ] || sudo -u "$APP_USER" cp .env.secrets.example .env.secrets
+sudo -u "$APP_USER" chmod 600 .env.secrets
 sudo cp systemd/printstream.service /etc/systemd/system/printstream.service
 sudo systemctl daemon-reload
-echo "Installation abgeschlossen. Bearbeite /opt/printstream/.env und starte anschließend den Dienst."
+echo "Installation abgeschlossen. Bearbeite /opt/printstream/.env und /opt/printstream/.env.secrets, starte anschließend den Dienst."

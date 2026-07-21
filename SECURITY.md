@@ -8,4 +8,5 @@ Nie committen oder loggen:
 - OctoPrint-API-Keys
 - Passwörter, Tokens oder private Schlüssel
 
-Secrets gehören ausschließlich in `.env`.
+Secrets gehören ausschließlich in `.env.secrets` (nicht committen).
+Nicht-sensible Einstellungen liegen in `.env`.

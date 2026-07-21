@@ -3,7 +3,7 @@
 ## Aktueller Stand
 
 - FastAPI-Grundgerüst
-- `.env`-Konfiguration
+- `.env`-Konfiguration und Secrets in `.env.secrets`
 - FFmpeg-Start, Stop und Status
 - OctoPrint-Statusabfrage
 - Jinja2-Weboberfläche
@@ -17,7 +17,7 @@
 
 ## Nächste Schritte
 
-1. `.env` einrichten.
+1. `.env` und `.env.secrets` einrichten.
 2. lokalen Start testen.
 3. YouTube-Teststream durchführen.
 4. systemd-Dienst auf dem Pi aktivieren.

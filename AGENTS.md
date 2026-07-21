@@ -17,7 +17,7 @@ PrintStream streamt eine OctoPrint-Webcam per FFmpeg zu YouTube und zeigt Druckd
 - FFmpeg als separaten Prozess starten.
 - Niemals `shell=True` verwenden.
 - Secrets niemals loggen oder committen.
-- Konfiguration aus `.env` laden.
+- Konfiguration aus `.env` und Secrets aus `.env.secrets` laden.
 - Python `logging`, Type Hints und Tests verwenden.
 - Vor größeren Änderungen zuerst einen kurzen Plan erstellen.
 

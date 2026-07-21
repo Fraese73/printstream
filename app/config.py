@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     overlay_logo_x: str = "W-w-24"
     overlay_logo_y: str = "24"
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", ".env.secrets"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",

@@ -11,6 +11,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+cp .env.secrets.example .env.secrets
+# Secrets in .env.secrets eintragen, dann:
 uvicorn app.main:app --host 0.0.0.0 --port 8088 --reload
 ```
 
