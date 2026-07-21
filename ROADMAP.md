@@ -7,7 +7,7 @@
 - [x] OctoPrint-Anbindung
 - [x] API unter `/api/v1`
 - [x] einfache Weboberfläche
-- [ ] YouTube-Teststream
+- [x] YouTube-Teststream
 - [ ] Logging mit Rotation
 - [x] automatischer FFmpeg-Neustart
 - [x] Stream-Resume nach Reboot
@@ -25,7 +25,7 @@
 ## Milestone 3 – Automatisierung
 
 - [x] Start bei Druckbeginn
-- [ ] Stop bei Druckende
+- [x] Stop bei Druckende
 - [ ] ioBroker-Integration
 - [ ] Benachrichtigungen
 

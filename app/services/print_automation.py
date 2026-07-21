@@ -11,7 +11,8 @@ from app.services.stream_manager import StreamManager
 logger = logging.getLogger(__name__)
 
 
-def is_printing(status: dict[str, Any]) -> bool:
+def is_print_active(status: dict[str, Any]) -> bool:
+    """True während Druck oder Pause (nicht bei reinem Idle / Abbruch-Ende)."""
     if not status.get("connected"):
         return False
     state = status.get("state") or {}
@@ -20,11 +21,20 @@ def is_printing(status: dict[str, Any]) -> bool:
     flags = state.get("flags") or {}
     if not isinstance(flags, dict):
         return False
-    return bool(flags.get("printing"))
+    return bool(
+        flags.get("printing")
+        or flags.get("paused")
+        or flags.get("pausing")
+    )
+
+
+# Alias für bestehende Imports/Tests
+def is_printing(status: dict[str, Any]) -> bool:
+    return is_print_active(status)
 
 
 class PrintAutomation:
-    """Pollt OctoPrint und startet den Stream bei Druckbeginn (Rising Edge)."""
+    """Pollt OctoPrint und startet/stoppt den Stream bei Druckbeginn/-ende."""
 
     def __init__(
         self,
@@ -42,17 +52,23 @@ class PrintAutomation:
     def running(self) -> bool:
         return self._task is not None and not self._task.done()
 
+    @property
+    def enabled(self) -> bool:
+        return self.settings.auto_start_on_print or self.settings.auto_stop_on_print_end
+
     async def start(self) -> None:
-        if not self.settings.auto_start_on_print:
-            logger.info("Auto-Start bei Druckbeginn ist deaktiviert.")
+        if not self.enabled:
+            logger.info("Print-Automation ist deaktiviert (Start/Stop aus).")
             return
         if self.running:
             return
         self._was_printing = None
         self._task = asyncio.create_task(self._run(), name="print-automation")
         logger.info(
-            "Print-Automation gestartet (Poll alle %.0fs).",
+            "Print-Automation gestartet (Poll alle %.0fs, start=%s, stop=%s).",
             self.settings.auto_print_poll_seconds,
+            self.settings.auto_start_on_print,
+            self.settings.auto_stop_on_print_end,
         )
 
     async def stop(self) -> None:
@@ -76,19 +92,28 @@ class PrintAutomation:
 
     async def tick(self) -> None:
         status = await self.octoprint.get_status()
-        printing = is_printing(status)
+        # Kurze Disconnects nicht als Druckende werten.
+        if not status.get("connected"):
+            logger.debug("Print-Automation: OctoPrint nicht erreichbar, überspringe Tick.")
+            return
+
+        printing = is_print_active(status)
 
         if self._was_printing is None:
-            # Erste Messung nur als Baseline – kein Start mitten im laufenden Druck.
+            # Erste Messung nur als Baseline – kein Start/Stop mitten im laufenden Druck.
             self._was_printing = printing
             logger.info(
-                "Print-Automation Baseline: printing=%s",
+                "Print-Automation Baseline: print_active=%s",
                 printing,
             )
             return
 
         if printing and not self._was_printing:
-            await self._on_print_started()
+            if self.settings.auto_start_on_print:
+                await self._on_print_started()
+        elif not printing and self._was_printing:
+            if self.settings.auto_stop_on_print_end:
+                await self._on_print_ended()
 
         self._was_printing = printing
 
@@ -98,3 +123,10 @@ class PrintAutomation:
             await self.stream_manager.start(user_requested=True)
         except Exception as exc:
             logger.warning("Auto-Start bei Druckbeginn fehlgeschlagen: %s", exc)
+
+    async def _on_print_ended(self) -> None:
+        logger.info("Druckende erkannt – stoppe Stream.")
+        try:
+            await self.stream_manager.stop(user_requested=True)
+        except Exception as exc:
+            logger.warning("Auto-Stop bei Druckende fehlgeschlagen: %s", exc)

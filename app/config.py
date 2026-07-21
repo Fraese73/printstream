@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     stream_restart_delay_seconds: float = 10.0
     stream_restart_max_attempts: int = 0
     auto_start_on_print: bool = True
+    auto_stop_on_print_end: bool = True
     auto_print_poll_seconds: float = 10.0
     overlay_enabled: bool = True
     overlay_font_path: str = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
